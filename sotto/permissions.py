@@ -6,8 +6,12 @@ Python), поэтому в System Settings галочки ставятся на 
 
 import ctypes
 import ctypes.util
+import sys
 
 GRANTED, DENIED, UNKNOWN = "granted", "denied", "unknown"
+
+# кому выдаются права: standalone Sotto.app или терминал-родитель
+GRANTEE = "Sotto" if getattr(sys, "frozen", False) else "ваш терминал (Terminal / iTerm2)"
 
 
 def check_accessibility() -> str:
@@ -44,18 +48,18 @@ def check_microphone() -> str:
 
 INSTRUCTIONS = {
     "microphone": (
-        "Микрофон: System Settings → Privacy & Security → Microphone → "
-        "включите ваш терминал (Terminal / iTerm2). Запрос появится при первой записи."
+        f"Микрофон: System Settings → Privacy & Security → Microphone → "
+        f"включите {GRANTEE}. Запрос появится при первой записи."
     ),
     "input_monitoring": (
-        "Input Monitoring (перехват клавиши-триггера): System Settings → "
-        "Privacy & Security → Input Monitoring → добавьте и включите ваш терминал. "
-        "Без этого зажатие правой Option не будет замечено."
+        f"Input Monitoring (перехват клавиши-триггера): System Settings → "
+        f"Privacy & Security → Input Monitoring → добавьте и включите {GRANTEE}. "
+        f"Без этого зажатие правой Option не будет замечено."
     ),
     "accessibility": (
-        "Accessibility (эмуляция Cmd+V для вставки): System Settings → "
-        "Privacy & Security → Accessibility → добавьте и включите ваш терминал. "
-        "Без этого текст будет только копироваться в буфер."
+        f"Accessibility (эмуляция Cmd+V для вставки): System Settings → "
+        f"Privacy & Security → Accessibility → добавьте и включите {GRANTEE}. "
+        f"Без этого текст будет только копироваться в буфер."
     ),
 }
 

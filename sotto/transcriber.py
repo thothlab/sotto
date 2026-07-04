@@ -1,13 +1,25 @@
 """Локальное распознавание через mlx-whisper (Apple Silicon, офлайн после загрузки).
 
+WAV декодируется своими силами (wave + numpy) и передаётся массивом —
+системный ffmpeg не нужен, что важно для standalone Sotto.app.
 mlx-whisper кэширует модель в памяти между вызовами (ModelHolder), поэтому
 после прогрева транскрипция короткой фразы занимает ~1 сек на M-серии.
 """
 
-import tempfile
 import wave
 
 import mlx_whisper
+import numpy as np
+
+SAMPLE_RATE = 16000  # mlx-whisper ждёт 16 kHz float32 mono
+
+
+def _load_wav(wav_path: str) -> np.ndarray:
+    with wave.open(wav_path, "rb") as w:
+        assert w.getsampwidth() == 2 and w.getnchannels() == 1, "ожидается 16-bit mono WAV"
+        assert w.getframerate() == SAMPLE_RATE, f"ожидается {SAMPLE_RATE} Hz"
+        data = w.readframes(w.getnframes())
+    return np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
 
 
 def transcribe(wav_path: str, model_repo: str, language: str = "", vocabulary: list[str] | None = None) -> str:
@@ -20,7 +32,7 @@ def transcribe(wav_path: str, model_repo: str, language: str = "", vocabulary: l
         # без метки вроде "Glossary:", иначе она просачивается в транскрипт
         kwargs["initial_prompt"] = ", ".join(vocabulary) + "."
     result = mlx_whisper.transcribe(
-        wav_path,
+        _load_wav(wav_path),
         path_or_hf_repo=model_repo,
         verbose=None,  # ничего не печатать: содержимое диктовок не логируем
         **kwargs,
@@ -31,15 +43,5 @@ def transcribe(wav_path: str, model_repo: str, language: str = "", vocabulary: l
 def warmup(model_repo: str) -> None:
     """Скачивает (при первом запуске) и загружает модель в память: транскрибирует
     полсекунды тишины, чтобы первая реальная фраза не ждала загрузку весов."""
-    f = tempfile.NamedTemporaryFile(prefix="sotto_warmup_", suffix=".wav", delete=False)
-    with wave.open(f, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(16000)
-        w.writeframes(b"\x00\x00" * 8000)
-    try:
-        mlx_whisper.transcribe(f.name, path_or_hf_repo=model_repo, verbose=None)
-    finally:
-        import os
-
-        os.unlink(f.name)
+    silence = np.zeros(SAMPLE_RATE // 2, dtype=np.float32)
+    mlx_whisper.transcribe(silence, path_or_hf_repo=model_repo, verbose=None)

@@ -56,17 +56,38 @@ def test_wav_to_transcript(tmp_path):
     assert hits >= 3, f"слишком мало совпадений в транскрипте: {text!r}"
 
 
+def _write_wav(path, seconds=0.1, rate=16000):
+    import wave
+
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(b"\x00\x01" * int(rate * seconds))
+
+
+def test_load_wav_shape_and_range(tmp_path):
+    from sotto.transcriber import _load_wav
+
+    _write_wav(tmp_path / "t.wav", seconds=0.5)
+    audio = _load_wav(str(tmp_path / "t.wav"))
+    assert audio.dtype.name == "float32"
+    assert len(audio) == 8000
+    assert abs(audio).max() <= 1.0
+
+
 def test_vocabulary_becomes_initial_prompt(monkeypatch, tmp_path):
     import sotto.transcriber as tr
 
     captured = {}
 
-    def fake_transcribe(path, **kwargs):
+    def fake_transcribe(audio, **kwargs):
         captured.update(kwargs)
         return {"text": " ok "}
 
     monkeypatch.setattr(tr.mlx_whisper, "transcribe", fake_transcribe)
-    out = tr.transcribe("x.wav", model_repo="m", language="ru", vocabulary=["Claude Code", "MCP"])
+    _write_wav(tmp_path / "x.wav")
+    out = tr.transcribe(str(tmp_path / "x.wav"), model_repo="m", language="ru", vocabulary=["Claude Code", "MCP"])
     assert out == "ok"
     assert captured["language"] == "ru"
     assert "Claude Code" in captured["initial_prompt"]

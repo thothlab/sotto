@@ -1,6 +1,6 @@
 PY := ./.venv/bin/python
 
-.PHONY: install run check test lint autostart no-autostart
+.PHONY: install run check test lint autostart no-autostart app
 
 install:
 	./install.sh
@@ -24,3 +24,6 @@ autostart:
 
 no-autostart:
 	$(PY) -m sotto uninstall-autostart
+
+app:
+	bash scripts/build_app.sh

@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14 # arm64 (Apple Silicon)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          ./.venv/bin/pip install --upgrade pip
+          ./.venv/bin/pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ./.venv/bin/ruff check sotto/ tests/
+
+      - name: Tests (без скачивания модели)
+        run: ./.venv/bin/python -m pytest tests/ -v -k "not wav_to_transcript"
+
+      - name: Build Sotto.app
+        run: bash scripts/build_app.sh
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Sotto-*-arm64.zip
+          generate_release_notes: true
+          body: |
+            **Установка:** скачайте `Sotto-*-arm64.zip`, распакуйте, перетащите `Sotto.app` в `Applications`.
+
+            Сборка не нотаризована Apple, поэтому при первом запуске выполните:
+            ```
+            xattr -dr com.apple.quarantine /Applications/Sotto.app
+            ```
+            (или правый клик → Open). Затем выдайте Sotto права в System Settings →
+            Privacy & Security: **Microphone**, **Input Monitoring**, **Accessibility**.
+
+            Требования: Apple Silicon, macOS 14+. Модель (~1.6 ГБ) скачается при первом запуске.

@@ -5,6 +5,8 @@ import sys
 
 
 def cmd_check() -> int:
+    import shutil
+
     from . import permissions
 
     statuses, missing = permissions.report()
@@ -14,16 +16,70 @@ def cmd_check() -> int:
         "accessibility": "Accessibility",
     }
     marks = {"granted": "✅", "denied": "❌", "unknown": "❓"}
-    print("Права macOS (выдаются терминалу, из которого запущен Sotto):")
+    print(f"Права macOS (выдаются: {permissions.GRANTEE}):")
     for key, st in statuses.items():
         print(f"  {marks[st]} {names[key]}: {st}")
     if missing:
         print("\nЧто сделать:")
         for line in missing:
             print(f"  • {line}")
-        print("\nПосле изменения галочек перезапустите терминал.")
+        print("\nПосле изменения галочек перезапустите Sotto (и терминал, если запуск из него).")
     else:
         print("\nВсе права на месте.")
+    if shutil.which("ffmpeg") is None:
+        print(
+            "\nℹ️  ffmpeg не найден — для работы Sotto он не нужен, но пригодится "
+            "для тестов и распознавания аудиофайлов не-WAV форматов: brew install ffmpeg"
+        )
+    return 0
+
+
+def cmd_transcribe(path: str) -> int:
+    """Распознать готовый аудиофайл. 16kHz mono WAV — напрямую; прочие форматы —
+    через ffmpeg, если он установлен."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    from . import config as config_mod
+    from .transcriber import _load_wav, transcribe
+
+    cfg = config_mod.load_config()
+    wav, tmp = path, None
+    try:
+        _load_wav(path)
+    except Exception:
+        if shutil.which("ffmpeg") is None:
+            print(
+                "Файл не является 16kHz mono WAV. Установите ffmpeg — тогда Sotto "
+                "будет конвертировать любые аудиоформаты сам: brew install ffmpeg",
+                file=sys.stderr,
+            )
+            return 1
+        tmp = tempfile.NamedTemporaryFile(prefix="sotto_", suffix=".wav", delete=False).name
+        conv = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-ar", "16000", "-ac", "1", tmp],
+            capture_output=True,
+            text=True,
+        )
+        if conv.returncode != 0:
+            print(f"ffmpeg не смог сконвертировать файл: {conv.stderr.strip()}", file=sys.stderr)
+            os.unlink(tmp)
+            return 1
+        wav = tmp
+    try:
+        print(
+            transcribe(
+                wav,
+                model_repo=cfg["model"]["name"],
+                language=cfg["model"]["language"],
+                vocabulary=cfg["vocabulary"],
+            )
+        )
+    finally:
+        if tmp:
+            os.unlink(tmp)
     return 0
 
 
@@ -64,12 +120,17 @@ def main() -> int:
         "command",
         nargs="?",
         default="run",
-        choices=["run", "check", "install-autostart", "uninstall-autostart"],
+        choices=["run", "check", "transcribe", "install-autostart", "uninstall-autostart"],
     )
+    parser.add_argument("path", nargs="?", help="аудиофайл для команды transcribe")
     args = parser.parse_args()
 
     if args.command == "check":
         return cmd_check()
+    if args.command == "transcribe":
+        if not args.path:
+            parser.error("transcribe требует путь к аудиофайлу")
+        return cmd_transcribe(args.path)
     if args.command == "install-autostart":
         from . import launchagent
 

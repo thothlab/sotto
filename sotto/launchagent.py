@@ -11,10 +11,16 @@ from . import BUNDLE_ID
 PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{BUNDLE_ID}.plist"
 
 
+def _program_arguments() -> list[str]:
+    if getattr(sys, "frozen", False):  # PyInstaller-бандл: sys.executable = Sotto.app/Contents/MacOS/Sotto
+        return [sys.executable, "run"]
+    return [sys.executable, "-m", "sotto", "run"]
+
+
 def _plist() -> dict:
     return {
         "Label": BUNDLE_ID,
-        "ProgramArguments": [sys.executable, "-m", "sotto", "run"],
+        "ProgramArguments": _program_arguments(),
         "RunAtLoad": True,
         "KeepAlive": False,
         "ProcessType": "Interactive",
