@@ -35,10 +35,10 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Sotto-*-arm64.zip
+          files: dist/Sotto-*-arm64.dmg
           generate_release_notes: true
           body: |
-            **Установка:** скачайте `Sotto-*-arm64.zip`, распакуйте, перетащите `Sotto.app` в `Applications`.
+            **Установка:** откройте `Sotto-*-arm64.dmg` и перетащите `Sotto.app` в `Applications`.
 
             Сборка не нотаризована Apple, поэтому при первом запуске выполните:
             ```

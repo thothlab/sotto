@@ -16,11 +16,16 @@ $PYBIN/pyinstaller --noconfirm --clean packaging/sotto.spec
 echo "==> Подпись (ad-hoc)…"
 codesign --force --deep --sign - dist/Sotto.app
 
-echo "==> Архив…"
-ZIP="dist/Sotto-$VERSION-arm64.zip"
-rm -f "$ZIP"
-ditto -c -k --keepParent dist/Sotto.app "$ZIP"
+echo "==> DMG…"
+DMG="dist/Sotto-$VERSION-arm64.dmg"
+STAGING="dist/dmg-staging"
+rm -rf "$STAGING" "$DMG"
+mkdir -p "$STAGING"
+cp -R dist/Sotto.app "$STAGING/"
+ln -s /Applications "$STAGING/Applications"
+hdiutil create -volname "Sotto" -srcfolder "$STAGING" -ov -format UDZO "$DMG" -quiet
+rm -rf "$STAGING"
 
 echo ""
 echo "Готово:"
-du -sh dist/Sotto.app "$ZIP"
+du -sh dist/Sotto.app "$DMG"
