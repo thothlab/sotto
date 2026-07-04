@@ -83,6 +83,38 @@ def cmd_transcribe(path: str) -> int:
     return 0
 
 
+def cmd_probe_menu() -> int:
+    """Диагностика: поднимает menu bar app на 3 сек и печатает состояние меню."""
+    import rumps
+
+    from . import config as config_mod
+    from .app import Orchestrator
+    from .menubar import SottoApp
+
+    app = SottoApp(Orchestrator(config_mod.load_config()))
+
+    def probe(_):
+        try:
+            item = app._nsapp.nsstatusitem
+            menu = item.menu()
+            print("STATUSITEM title:", item.title())
+            print("MENU attached:", menu is not None)
+            if menu is not None:
+                print("MENU items:", menu.numberOfItems())
+                for i in range(menu.numberOfItems()):
+                    print("  -", menu.itemAtIndex_(i).title() or "(separator)")
+        except Exception as e:
+            print("PROBE ERROR:", type(e).__name__, e)
+        finally:
+            sys.stdout.flush()
+            rumps.quit_application()
+
+    timer = rumps.Timer(probe, 3)
+    timer.start()
+    app.run()
+    return 0
+
+
 def cmd_run() -> int:
     from . import config as config_mod
     from . import permissions
@@ -120,13 +152,15 @@ def main() -> int:
         "command",
         nargs="?",
         default="run",
-        choices=["run", "check", "transcribe", "install-autostart", "uninstall-autostart"],
+        choices=["run", "check", "transcribe", "probe-menu", "install-autostart", "uninstall-autostart"],
     )
     parser.add_argument("path", nargs="?", help="аудиофайл для команды transcribe")
     args = parser.parse_args()
 
     if args.command == "check":
         return cmd_check()
+    if args.command == "probe-menu":
+        return cmd_probe_menu()
     if args.command == "transcribe":
         if not args.path:
             parser.error("transcribe требует путь к аудиофайлу")

@@ -9,6 +9,7 @@ import threading
 from collections import deque
 
 from . import config as config_mod
+from .cloud_stt import transcribe_cloud
 from .hotkey import HotkeyListener
 from .paste import paste_text, set_clipboard
 from .postprocess import postprocess
@@ -16,6 +17,15 @@ from .recorder import Recorder
 from .transcriber import transcribe, warmup
 
 IDLE, RECORDING, TRANSCRIBING = "idle", "recording", "transcribing"
+
+
+def _notify(title: str, message: str) -> None:
+    try:
+        import rumps
+
+        rumps.notification("Sotto", title, message)
+    except Exception:
+        pass  # вне app-бандла уведомления могут быть недоступны
 
 
 class Orchestrator:
@@ -45,6 +55,9 @@ class Orchestrator:
             self._listener.stop()
 
     def warmup_async(self):
+        if self.cfg["stt"]["backend"] == "cloud":
+            self.model_ready = True  # локальная модель не нужна и не скачивается
+            return
         self.model_ready = False
 
         def _warm():
@@ -92,12 +105,20 @@ class Orchestrator:
             wav_path, duration = recorder.stop()
             if duration < self.cfg["audio"]["min_duration"]:
                 return  # случайный тап
-            text = transcribe(
-                wav_path,
-                model_repo=self.cfg["model"]["name"],
-                language=self.cfg["model"]["language"],
-                vocabulary=self.cfg["vocabulary"],
-            )
+            if self.cfg["stt"]["backend"] == "cloud":
+                text = transcribe_cloud(
+                    wav_path,
+                    self.cfg,
+                    config_mod.stt_api_key(self.cfg),
+                    vocabulary=self.cfg["vocabulary"],
+                )
+            else:
+                text = transcribe(
+                    wav_path,
+                    model_repo=self.cfg["model"]["name"],
+                    language=self.cfg["model"]["language"],
+                    vocabulary=self.cfg["vocabulary"],
+                )
             if not text:
                 return
             text = postprocess(text, self.cfg, config_mod.api_key(self.cfg))
@@ -109,13 +130,18 @@ class Orchestrator:
             with self._lock:
                 self.history.appendleft(text)
                 self.last_error = (
-                    "Нет права Accessibility — текст скопирован в буфер, вставьте Cmd+V"
+                    "Нет права Accessibility — текст скопирован в буфер, вставьте Cmd+V. "
+                    "После выдачи права перезапустите Sotto."
                     if method == "clipboard"
                     else None
                 )
                 self.version += 1
+            if method == "clipboard":
+                _notify("Текст в буфере обмена — вставьте Cmd+V",
+                        "Выдайте Sotto право Accessibility и перезапустите приложение.")
         except Exception as e:
-            self._set_error(f"Ошибка распознавания: {e.__class__.__name__}")
+            detail = str(e) if isinstance(e, RuntimeError) else e.__class__.__name__
+            self._set_error(f"Ошибка распознавания: {detail}")
         finally:
             if wav_path:
                 try:
@@ -134,6 +160,12 @@ class Orchestrator:
 
     def set_model(self, repo: str):
         self.cfg["model"]["name"] = repo
+        self.cfg["stt"]["backend"] = "local"
+        config_mod.save_config(self.cfg)
+        self.warmup_async()
+
+    def set_cloud_backend(self):
+        self.cfg["stt"]["backend"] = "cloud"
         config_mod.save_config(self.cfg)
         self.warmup_async()
 

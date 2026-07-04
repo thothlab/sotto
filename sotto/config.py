@@ -19,6 +19,13 @@ DEFAULTS: dict = {
         "name": "mlx-community/whisper-large-v3-turbo",
         "language": "",  # пусто = автоопределение
     },
+    "stt": {
+        "backend": "local",  # local (mlx-whisper, офлайн) | cloud (OpenAI-совместимый API)
+        "cloud_base_url": "https://api.openai.com/v1",
+        "cloud_api_key": "",  # или env SOTTO_STT_API_KEY / OPENAI_API_KEY / GROQ_API_KEY
+        "cloud_model": "whisper-1",
+        "cloud_timeout": 15.0,
+    },
     "paste": {
         "restore_clipboard": True,
         "restore_delay": 0.3,
@@ -50,6 +57,18 @@ min_duration = 0.25    # записи короче (сек) игнорируют
 [model]
 name = "mlx-community/whisper-large-v3-turbo"
 language = ""          # "" = авто (русский/английский вперемешку — ок)
+
+[stt]
+# Распознавание: "local" — mlx-whisper на этом Mac (офлайн, модель качается
+# при первом запуске); "cloud" — OpenAI-совместимый API /audio/transcriptions
+# (OpenAI: whisper-1 / gpt-4o-mini-transcribe; Groq: whisper-large-v3-turbo).
+# OpenRouter распознавание речи не предоставляет — он подходит только для
+# секции [postprocess].
+backend = "local"
+cloud_base_url = "https://api.openai.com/v1"
+cloud_api_key = ""     # или env SOTTO_STT_API_KEY / OPENAI_API_KEY / GROQ_API_KEY
+cloud_model = "whisper-1"
+cloud_timeout = 15.0
 
 [paste]
 restore_clipboard = true
@@ -113,4 +132,13 @@ def api_key(cfg: dict) -> str:
         cfg["postprocess"]["api_key"]
         or os.environ.get("SOTTO_API_KEY", "")
         or os.environ.get("OPENROUTER_API_KEY", "")
+    )
+
+
+def stt_api_key(cfg: dict) -> str:
+    return (
+        cfg["stt"]["cloud_api_key"]
+        or os.environ.get("SOTTO_STT_API_KEY", "")
+        or os.environ.get("OPENAI_API_KEY", "")
+        or os.environ.get("GROQ_API_KEY", "")
     )

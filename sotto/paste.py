@@ -39,15 +39,30 @@ def _type_fallback(text: str) -> None:
     Controller().type(text)
 
 
+def _accessibility_granted() -> bool:
+    try:
+        from ApplicationServices import AXIsProcessTrusted
+
+        return bool(AXIsProcessTrusted())
+    except Exception:
+        return True  # не смогли проверить — пробуем вставить как обычно
+
+
 def paste_text(text: str, restore_clipboard: bool = True, restore_delay: float = 0.3) -> str:
     """Вставляет текст. Возвращает способ: 'paste' | 'type' | 'clipboard'.
 
     'clipboard' означает, что эмуляция клавиш недоступна (нет Accessibility) —
-    текст оставлен в буфере, пользователь вставит вручную.
+    текст оставлен в буфере, пользователь вставит вручную. Проверка права
+    обязательна ДО эмуляции: CGEventPost без Accessibility дропает события
+    молча, не бросая исключений, — иначе мы бы ещё и затёрли буфер,
+    «восстановив» старое содержимое поверх невставленного текста.
     """
     old = get_clipboard() if restore_clipboard else None
     set_clipboard(text)
     time.sleep(0.05)  # дать pasteboard-серверу применить изменение
+
+    if not _accessibility_granted():
+        return "clipboard"  # буфер не восстанавливаем — текст должен остаться
 
     method = "paste"
     try:
@@ -57,7 +72,7 @@ def paste_text(text: str, restore_clipboard: bool = True, restore_delay: float =
             _type_fallback(text)
             method = "type"
         except Exception:
-            return "clipboard"  # буфер не восстанавливаем — текст должен остаться
+            return "clipboard"
 
     if restore_clipboard and old is not None:
         time.sleep(restore_delay)  # Cmd+V должен успеть прочитать буфер

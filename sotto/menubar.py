@@ -10,11 +10,12 @@ from .app import IDLE, RECORDING, TRANSCRIBING, Orchestrator
 from .recorder import input_devices
 
 MODELS = [
-    ("large-v3-turbo (дефолт)", "mlx-community/whisper-large-v3-turbo"),
-    ("large-v3", "mlx-community/whisper-large-v3-mlx"),
-    ("medium", "mlx-community/whisper-medium-mlx"),
-    ("small", "mlx-community/whisper-small-mlx"),
+    ("large-v3-turbo · 1.6 ГБ (дефолт)", "mlx-community/whisper-large-v3-turbo"),
+    ("medium · 1.5 ГБ", "mlx-community/whisper-medium-mlx"),
+    ("small · 0.5 ГБ", "mlx-community/whisper-small-mlx"),
+    ("tiny · 0.15 ГБ", "mlx-community/whisper-tiny"),
 ]
+CLOUD_ITEM = "Облако (OpenAI / Groq API)"
 
 ICONS = {IDLE: "🎙", RECORDING: "🔴", TRANSCRIBING: "⏳"}
 LEVEL_BARS = "▁▂▃▅▆█"
@@ -32,11 +33,15 @@ class SottoApp(rumps.App):
         self.enabled_item = rumps.MenuItem("Включено", callback=self._toggle_enabled)
         self.enabled_item.state = 1
 
+        is_cloud = orch.cfg["stt"]["backend"] == "cloud"
         self.model_menu = rumps.MenuItem("Модель")
         for label, repo in MODELS:
             item = rumps.MenuItem(label, callback=self._pick_model)
-            item.state = 1 if repo == orch.cfg["model"]["name"] else 0
+            item.state = 1 if (not is_cloud and repo == orch.cfg["model"]["name"]) else 0
             self.model_menu.add(item)
+        cloud_item = rumps.MenuItem(CLOUD_ITEM, callback=self._pick_model)
+        cloud_item.state = 1 if is_cloud else 0
+        self.model_menu.add(cloud_item)
 
         self.mic_menu = rumps.MenuItem("Микрофон")
         current_dev = orch.cfg["audio"]["device"]
@@ -81,9 +86,14 @@ class SottoApp(rumps.App):
             icon += LEVEL_BARS[min(len(LEVEL_BARS) - 1, int(orch.level * len(LEVEL_BARS)))]
         if not orch.enabled:
             icon = "🎙💤"
+        elif orch.state == IDLE and orch.last_error:
+            icon = "🎙⚠️"  # проблема видна даже не открывая меню
         self.title = icon
 
-        model_short = orch.cfg["model"]["name"].rsplit("/", 1)[-1]
+        if orch.cfg["stt"]["backend"] == "cloud":
+            model_short = f"облако · {orch.cfg['stt']['cloud_model']}"
+        else:
+            model_short = orch.cfg["model"]["name"].rsplit("/", 1)[-1]
         if orch.last_error:
             status = f"⚠️ {orch.last_error}"
         elif not orch.model_ready:
@@ -121,11 +131,25 @@ class SottoApp(rumps.App):
         item.state = 1 if self.orch.enabled else 0
 
     def _pick_model(self, item):
+        if item.title == CLOUD_ITEM:
+            from . import config as config_mod
+
+            if not config_mod.stt_api_key(self.orch.cfg):
+                rumps.alert(
+                    "Нужен API-ключ",
+                    "Добавьте ключ в ~/.config/sotto/config.toml → [stt] cloud_api_key\n"
+                    "(или env OPENAI_API_KEY / GROQ_API_KEY).\n\n"
+                    "OpenAI: cloud_model = \"whisper-1\"\n"
+                    "Groq:   cloud_base_url = \"https://api.groq.com/openai/v1\",\n"
+                    "        cloud_model = \"whisper-large-v3-turbo\"",
+                )
+                return
+            self.orch.set_cloud_backend()
+        else:
+            self.orch.set_model(dict(MODELS)[item.title])
         for child in self.model_menu.values():
             child.state = 0
         item.state = 1
-        repo = dict(MODELS)[item.title]
-        self.orch.set_model(repo)
 
     def _pick_mic(self, item):
         for child in self.mic_menu.values():
